@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bee Swarm Simulator</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Left panel: Agent list ────────────────────────────────── -->
+  <aside class="panel" id="panel-left">
+    <div class="panel-header">Agents</div>
+    <div class="panel-body" id="agent-list">
+      <div class="agent-section-title">Bees</div>
+      <!-- populated by JS -->
+    </div>
+  </aside>
+
+  <!-- ── Center: Canvas map ───────────────────────────────────── -->
+  <main id="map-area">
+    <div id="topbar">
+      <div class="title">Bee Swarm Simulator</div>
+      <div id="status-dot"></div>
+      <div class="stat">Tick: <span id="stat-tick">0</span></div>
+      <div class="stat">Nectar: <span id="stat-nectar">0</span></div>
+      <div class="stat">Honey: <span id="stat-honey">0</span></div>
+      <div class="stat">Active: <span id="stat-active">0</span></div>
+      <div id="conn-badge" class="disconnected">Disconnected</div>
+    </div>
+    <div id="canvas-wrap">
+      <canvas id="sim-canvas"></canvas>
+    </div>
+  </main>
+
+  <!-- ── Right panel: Controls ────────────────────────────────── -->
+  <aside class="panel" id="panel-right">
+    <div class="panel-header">Controls</div>
+    <div class="panel-body">
+
+      <!-- Simulation controls -->
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Simulation</div>
+        <div class="btn-row">
+          <button class="btn btn-start" id="btn-start">Start</button>
+          <button class="btn btn-stop"  id="btn-stop" disabled>Stop</button>
+          <button class="btn btn-reset" id="btn-reset">Reset</button>
+        </div>
+      </div>
+
+      <!-- Speed & regen sliders -->
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Performance</div>
+
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>Bee Speed (px/s)</span>
+            <span id="val-bee-speed">3.0</span>
+          </div>
+          <input type="range" id="sl-bee-speed"
+            min="1" max="8" step="0.5" value="3" />
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>Nectar Regen (u/tick)</span>
+            <span id="val-nectar-regen">0.05</span>
+          </div>
+          <input type="range" id="sl-nectar-regen"
+            min="0.01" max="0.2" step="0.01" value="0.05" />
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>Tick Rate (ticks/s)</span>
+            <span id="val-tick-rate">10</span>
+          </div>
+          <input type="range" id="sl-tick-rate"
+            min="1" max="30" step="1" value="10" />
+        </div>
+      </div>
+
+      <!-- Population sliders -->
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Population</div>
+
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>Bees</span>
+            <span id="val-num-bees">10</span>
+          </div>
+          <input type="range" id="sl-num-bees"
+            min="1" max="30" step="1" value="10" />
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-label">
+            <span>Flowers</span>
+            <span id="val-num-flowers">5</span>
+          </div>
+          <input type="range" id="sl-num-flowers"
+            min="1" max="20" step="1" value="5" />
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Statistics</div>
+        <div class="stat-row">
+          <span class="stat-label">Total Nectar</span>
+          <span class="stat-value" id="sstat-nectar">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Total Honey</span>
+          <span class="stat-value" id="sstat-honey">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Active Bees</span>
+          <span class="stat-value" id="sstat-active">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Open Flowers</span>
+          <span class="stat-value" id="sstat-flowers">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Hive Nectar</span>
+          <span class="stat-value" id="sstat-hive-nectar">0</span>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+</div>
+
+<script src="/static/js/canvas.js"></script>
+<script src="/static/js/websocket.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
