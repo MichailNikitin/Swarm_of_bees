@@ -207,7 +207,7 @@ const CanvasRenderer = (() => {
 
     ctx.fillStyle = COLORS.textDim;
     ctx.font = `9px sans-serif`;
-    ctx.fillText('honey', hive.x, hive.y + 14);
+    ctx.fillText('мёд', hive.x, hive.y + 14);
 
     ctx.restore();
   }

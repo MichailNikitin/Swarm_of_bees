@@ -63,14 +63,14 @@
 
   // ── WebSocket events ─────────────────────────────────────────────
   SwarmWS.onOpen(() => {
-    connBadge.textContent = 'Connected';
+    connBadge.textContent = 'Подключено';
     connBadge.className = 'connected';
     // Send canvas dimensions so the backend can place agents correctly
     sendCanvasSize();
   });
 
   SwarmWS.onClose(() => {
-    connBadge.textContent = 'Reconnecting…';
+    connBadge.textContent = 'Переподключение…';
     connBadge.className = 'disconnected';
     setRunning(false);
   });
@@ -146,7 +146,19 @@
     }
   }
 
-  // ── Agent list rendering ─────────────────────────────────────────
+  // Перевод состояний агентов на русский
+  const STATE_RU = {
+    idle:       'ожидание',
+    to_flower:  'к цветку',
+    collecting: 'сбор',
+    to_hive:    'к улью',
+    unloading:  'разгрузка',
+    open:       'открыт',
+    closed:     'закрыт',
+    active:     'активен',
+  };
+
+  // ── Отрисовка списка агентов ──────────────────────────────────────
   function renderAgentList(snap) {
     const bees    = snap.bees    || [];
     const flowers = snap.flowers || [];
@@ -154,36 +166,38 @@
 
     const buf = [];
 
-    // Bees
-    buf.push('<div class="agent-section-title">Bees</div>');
+    // Пчёлы
+    buf.push('<div class="agent-section-title">Пчёлы</div>');
     for (const bee of bees) {
+      const stateRu = STATE_RU[bee.state] || bee.state;
       buf.push(`
         <div class="agent-item">
           <span class="agent-name">${bee.id}</span>
-          <span class="agent-state state-${bee.state}">${bee.state}</span>
-          <span class="agent-detail">(${bee.x}, ${bee.y}) &nbsp; nectar: ${bee.nectar.toFixed(2)}</span>
+          <span class="agent-state state-${bee.state}">${stateRu}</span>
+          <span class="agent-detail">(${bee.x}, ${bee.y}) &nbsp; нектар: ${bee.nectar.toFixed(2)}</span>
         </div>`);
     }
 
-    // Flowers
-    buf.push('<div class="agent-section-title" style="margin-top:8px">Flowers</div>');
+    // Цветы
+    buf.push('<div class="agent-section-title" style="margin-top:8px">Цветы</div>');
     for (const f of flowers) {
+      const stateRu = STATE_RU[f.state] || f.state;
       buf.push(`
         <div class="agent-item">
           <span class="agent-name">${f.id}</span>
-          <span class="agent-state state-${f.state}">${f.state}</span>
-          <span class="agent-detail">(${f.x}, ${f.y}) &nbsp; nectar: ${f.nectar.toFixed(2)}</span>
+          <span class="agent-state state-${f.state}">${stateRu}</span>
+          <span class="agent-detail">(${f.x}, ${f.y}) &nbsp; нектар: ${f.nectar.toFixed(2)}</span>
         </div>`);
     }
 
-    // Hive
+    // Улей
     if (hive) {
-      buf.push('<div class="agent-section-title" style="margin-top:8px">Hive</div>');
+      buf.push('<div class="agent-section-title" style="margin-top:8px">Улей</div>');
       buf.push(`
         <div class="agent-item">
-          <span class="agent-name">hive</span>
-          <span class="agent-state state-open">active</span>
-          <span class="agent-detail">nectar: ${hive.nectar.toFixed(2)} &nbsp; honey: ${hive.honey.toFixed(2)}</span>
+          <span class="agent-name">улей</span>
+          <span class="agent-state state-open">активен</span>
+          <span class="agent-detail">нектар: ${hive.nectar.toFixed(2)} &nbsp; мёд: ${hive.honey.toFixed(2)}</span>
         </div>`);
     }
 

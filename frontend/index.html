@@ -1,61 +1,61 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bee Swarm Simulator</title>
+  <title>Симулятор роя пчёл</title>
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
 <div id="app">
 
-  <!-- ── Left panel: Agent list ────────────────────────────────── -->
+  <!-- ── Левая панель: список агентов ──────────────────────────── -->
   <aside class="panel" id="panel-left">
-    <div class="panel-header">Agents</div>
+    <div class="panel-header">Агенты</div>
     <div class="panel-body" id="agent-list">
-      <div class="agent-section-title">Bees</div>
-      <!-- populated by JS -->
+      <div class="agent-section-title">Пчёлы</div>
+      <!-- заполняется JavaScript -->
     </div>
   </aside>
 
-  <!-- ── Center: Canvas map ───────────────────────────────────── -->
+  <!-- ── Центр: холст симуляции ───────────────────────────────── -->
   <main id="map-area">
     <div id="topbar">
-      <div class="title">Bee Swarm Simulator</div>
+      <div class="title">Симулятор роя пчёл</div>
       <div id="status-dot"></div>
-      <div class="stat">Tick: <span id="stat-tick">0</span></div>
-      <div class="stat">Nectar: <span id="stat-nectar">0</span></div>
-      <div class="stat">Honey: <span id="stat-honey">0</span></div>
-      <div class="stat">Active: <span id="stat-active">0</span></div>
-      <div id="conn-badge" class="disconnected">Disconnected</div>
+      <div class="stat">Тик: <span id="stat-tick">0</span></div>
+      <div class="stat">Нектар: <span id="stat-nectar">0</span></div>
+      <div class="stat">Мёд: <span id="stat-honey">0</span></div>
+      <div class="stat">Активных: <span id="stat-active">0</span></div>
+      <div id="conn-badge" class="disconnected">Отключено</div>
     </div>
     <div id="canvas-wrap">
       <canvas id="sim-canvas"></canvas>
     </div>
   </main>
 
-  <!-- ── Right panel: Controls ────────────────────────────────── -->
+  <!-- ── Правая панель: управление ────────────────────────────── -->
   <aside class="panel" id="panel-right">
-    <div class="panel-header">Controls</div>
+    <div class="panel-header">Управление</div>
     <div class="panel-body">
 
-      <!-- Simulation controls -->
+      <!-- Кнопки управления -->
       <div class="ctrl-section">
-        <div class="ctrl-section-title">Simulation</div>
+        <div class="ctrl-section-title">Симуляция</div>
         <div class="btn-row">
-          <button class="btn btn-start" id="btn-start">Start</button>
-          <button class="btn btn-stop"  id="btn-stop" disabled>Stop</button>
-          <button class="btn btn-reset" id="btn-reset">Reset</button>
+          <button class="btn btn-start" id="btn-start">Старт</button>
+          <button class="btn btn-stop"  id="btn-stop" disabled>Стоп</button>
+          <button class="btn btn-reset" id="btn-reset">Сброс</button>
         </div>
       </div>
 
-      <!-- Speed & regen sliders -->
+      <!-- Слайдеры производительности -->
       <div class="ctrl-section">
-        <div class="ctrl-section-title">Performance</div>
+        <div class="ctrl-section-title">Производительность</div>
 
         <div class="slider-group">
           <div class="slider-label">
-            <span>Bee Speed (px/s)</span>
+            <span>Скорость пчёл (пкс/с)</span>
             <span id="val-bee-speed">3.0</span>
           </div>
           <input type="range" id="sl-bee-speed"
@@ -64,7 +64,7 @@
 
         <div class="slider-group">
           <div class="slider-label">
-            <span>Nectar Regen (u/tick)</span>
+            <span>Регенерация нектара (ед/тик)</span>
             <span id="val-nectar-regen">0.05</span>
           </div>
           <input type="range" id="sl-nectar-regen"
@@ -73,7 +73,7 @@
 
         <div class="slider-group">
           <div class="slider-label">
-            <span>Tick Rate (ticks/s)</span>
+            <span>Частота тиков (тик/с)</span>
             <span id="val-tick-rate">10</span>
           </div>
           <input type="range" id="sl-tick-rate"
@@ -81,13 +81,13 @@
         </div>
       </div>
 
-      <!-- Population sliders -->
+      <!-- Слайдеры популяции -->
       <div class="ctrl-section">
-        <div class="ctrl-section-title">Population</div>
+        <div class="ctrl-section-title">Популяция</div>
 
         <div class="slider-group">
           <div class="slider-label">
-            <span>Bees</span>
+            <span>Количество пчёл</span>
             <span id="val-num-bees">10</span>
           </div>
           <input type="range" id="sl-num-bees"
@@ -96,7 +96,7 @@
 
         <div class="slider-group">
           <div class="slider-label">
-            <span>Flowers</span>
+            <span>Количество цветов</span>
             <span id="val-num-flowers">5</span>
           </div>
           <input type="range" id="sl-num-flowers"
@@ -104,27 +104,27 @@
         </div>
       </div>
 
-      <!-- Stats -->
+      <!-- Статистика -->
       <div class="ctrl-section">
-        <div class="ctrl-section-title">Statistics</div>
+        <div class="ctrl-section-title">Статистика</div>
         <div class="stat-row">
-          <span class="stat-label">Total Nectar</span>
+          <span class="stat-label">Собрано нектара</span>
           <span class="stat-value" id="sstat-nectar">0</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Total Honey</span>
+          <span class="stat-label">Произведено мёда</span>
           <span class="stat-value" id="sstat-honey">0</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Active Bees</span>
+          <span class="stat-label">Активных пчёл</span>
           <span class="stat-value" id="sstat-active">0</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Open Flowers</span>
+          <span class="stat-label">Открытых цветов</span>
           <span class="stat-value" id="sstat-flowers">0</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Hive Nectar</span>
+          <span class="stat-label">Нектар в улье</span>
           <span class="stat-value" id="sstat-hive-nectar">0</span>
         </div>
       </div>
