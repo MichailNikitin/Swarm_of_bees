@@ -87,7 +87,7 @@
 
         <div class="slider-group">
           <div class="slider-label">
-            <span>Количество пчёл</span>
+            <span>Пчёл на улей</span>
             <span id="val-num-bees">10</span>
           </div>
           <input type="range" id="sl-num-bees"
@@ -101,6 +101,17 @@
           </div>
           <input type="range" id="sl-num-flowers"
             min="1" max="20" step="1" value="5" />
+        </div>
+      </div>
+
+      <!-- Управление ульями -->
+      <div class="ctrl-section">
+        <div class="ctrl-section-title hive-section-title">
+          <span>Ульи</span>
+          <button class="btn-add-hive" id="btn-add-hive">+ Добавить</button>
+        </div>
+        <div id="hive-list">
+          <!-- заполняется JavaScript -->
         </div>
       </div>
 
@@ -124,7 +135,7 @@
           <span class="stat-value" id="sstat-flowers">0</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Нектар в улье</span>
+          <span class="stat-label">Нектар в ульях</span>
           <span class="stat-value" id="sstat-hive-nectar">0</span>
         </div>
       </div>

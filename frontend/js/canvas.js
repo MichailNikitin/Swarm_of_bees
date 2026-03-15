@@ -12,14 +12,20 @@ const CanvasRenderer = (() => {
     flowerOpen:   '#4caf50',
     flowerClosed: '#607080',
     flowerStroke: '#2a3a2a',
-    hive:         '#f5c518',
-    hiveStroke:   '#b8901a',
     hiveFill:     '#1a1408',
     nectar:       '#4caf50',
     nectarLow:    '#e74c3c',
     text:         '#c8d8e8',
     textDim:      '#607080',
-    line:         'rgba(245, 197, 24, 0.15)',
+  };
+
+  // Short algorithm labels shown under each hive on canvas
+  const ALGO_LABEL = {
+    greedy:       'жадный',
+    nearest:      'ближайший',
+    round_robin:  'равном.',
+    probabilistic:'вероятн.',
+    selective:    'избират.',
   };
 
   const SIZES = {
@@ -68,22 +74,30 @@ const CanvasRenderer = (() => {
 
     // Draw agents
     if (state.flowers) state.flowers.forEach(drawFlower);
-    if (state.hive)    drawHive(state.hive);
+    if (state.hives)   state.hives.forEach(drawHive);
+    else if (state.hive) drawHive(state.hive);  // backward-compat fallback
     if (state.bees)    state.bees.forEach(drawBee);
   }
 
-  // ── Flight lines ───────────────────────────────────────────────────
+  // ── Flight lines (coloured per hive) ──────────────────────────────
   function drawFlightLines() {
-    if (!state.bees || !state.flowers || !state.hive) return;
+    if (!state.bees || !state.flowers) return;
+
     const flowerMap = {};
     state.flowers.forEach(f => { flowerMap[f.id] = f; });
+    const hiveMap = {};
+    if (state.hives) state.hives.forEach(h => { hiveMap[h.id] = h; });
+    else if (state.hive) hiveMap[state.hive.id] = state.hive;
 
     ctx.save();
-    ctx.strokeStyle = COLORS.line;
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 5]);
 
     state.bees.forEach(bee => {
+      const hive = hiveMap[bee.hive_id] || Object.values(hiveMap)[0];
+      const beeColor = bee.color || COLORS.bee;
+      ctx.strokeStyle = beeColor + '28';  // 28 hex ≈ 16% alpha
+
       if (bee.state === 'to_flower' && bee.target_flower_id) {
         const f = flowerMap[bee.target_flower_id];
         if (!f) return;
@@ -91,10 +105,10 @@ const CanvasRenderer = (() => {
         ctx.moveTo(bee.x, bee.y);
         ctx.lineTo(f.x, f.y);
         ctx.stroke();
-      } else if (bee.state === 'to_hive' || bee.state === 'unloading') {
+      } else if ((bee.state === 'to_hive' || bee.state === 'unloading') && hive) {
         ctx.beginPath();
         ctx.moveTo(bee.x, bee.y);
-        ctx.lineTo(state.hive.x, state.hive.y);
+        ctx.lineTo(hive.x, hive.y);
         ctx.stroke();
       }
     });
@@ -160,9 +174,10 @@ const CanvasRenderer = (() => {
     ctx.restore();
   }
 
-  // ── Hive ───────────────────────────────────────────────────────────
+  // ── Hive (colour from hive.color) ─────────────────────────────────
   function drawHive(hive) {
     const r = SIZES.hive;
+    const color = hive.color || COLORS.bee;
     ctx.save();
 
     // Hexagon
@@ -176,16 +191,16 @@ const CanvasRenderer = (() => {
     ctx.closePath();
     ctx.fillStyle = COLORS.hiveFill;
     ctx.fill();
-    ctx.strokeStyle = COLORS.hive;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Inner honeycomb hint (3 small hexagons)
+    // Inner honeycomb hint
     const inner = r * 0.38;
     for (let s = 0; s < 3; s++) {
-      const angle = (s * 2 * Math.PI) / 3;
-      const cx = hive.x + inner * Math.cos(angle);
-      const cy = hive.y + inner * Math.sin(angle);
+      const a0 = (s * 2 * Math.PI) / 3;
+      const cx = hive.x + inner * Math.cos(a0);
+      const cy = hive.y + inner * Math.sin(a0);
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const a = (i * Math.PI) / 3 - Math.PI / 6;
@@ -194,43 +209,53 @@ const CanvasRenderer = (() => {
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = 'rgba(245,197,24,0.3)';
+      ctx.strokeStyle = color + '50';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
 
     // Honey label
     ctx.fillStyle = COLORS.text;
-    ctx.font = `bold 11px sans-serif`;
+    ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`${hive.honey.toFixed(1)}`, hive.x, hive.y + 4);
-
+    ctx.fillText(hive.honey.toFixed(1), hive.x, hive.y + 4);
     ctx.fillStyle = COLORS.textDim;
-    ctx.font = `9px sans-serif`;
+    ctx.font = '9px sans-serif';
     ctx.fillText('мёд', hive.x, hive.y + 14);
+
+    // Algorithm label
+    const algoLabel = ALGO_LABEL[hive.algorithm_name] || (hive.algorithm_name || '');
+    ctx.fillStyle = color + 'bb';
+    ctx.font = '8px sans-serif';
+    ctx.fillText(algoLabel, hive.x, hive.y + r + 12);
 
     ctx.restore();
   }
 
-  // ── Bee ────────────────────────────────────────────────────────────
+  // ── Bee (colour from bee.color / hive palette) ────────────────────
   function drawBee(bee) {
     const r = SIZES.bee;
+    const beeColor = bee.color || COLORS.bee;
     ctx.save();
 
     // Glow for collecting bees
     if (bee.state === 'collecting') {
-      ctx.shadowColor = COLORS.bee;
+      ctx.shadowColor = beeColor;
       ctx.shadowBlur = 8;
     }
+
+    ctx.globalAlpha = bee.state === 'idle' ? 0.45 : 1.0;
 
     // Body
     ctx.beginPath();
     ctx.arc(bee.x, bee.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = bee.state === 'idle' ? '#a08010' : COLORS.bee;
+    ctx.fillStyle = beeColor;
     ctx.fill();
-    ctx.strokeStyle = COLORS.beeStroke;
+    ctx.strokeStyle = beeColor + 'aa';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    ctx.globalAlpha = 1.0;
 
     ctx.shadowBlur = 0;
 

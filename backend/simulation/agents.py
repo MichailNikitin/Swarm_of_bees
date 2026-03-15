@@ -1,10 +1,23 @@
 """Agent definitions for the bee swarm simulation."""
 from __future__ import annotations
+
 import math
 import random
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+
+# Palette assigned to hives in order; cycles if more than 8 hives
+HIVE_COLORS = [
+    "#f5c518",  # жёлтый  (hive_0)
+    "#e74c3c",  # красный (hive_1)
+    "#3498db",  # синий   (hive_2)
+    "#9b59b6",  # фиолетовый
+    "#1abc9c",  # бирюзовый
+    "#e67e22",  # оранжевый
+    "#2ecc71",  # зелёный
+    "#e91e63",  # розовый
+]
 
 
 class BeeState(str, Enum):
@@ -33,14 +46,18 @@ class Vec2:
         if dist <= speed:
             return Vec2(target.x, target.y)
         ratio = speed / dist
-        return Vec2(self.x + (target.x - self.x) * ratio,
-                    self.y + (target.y - self.y) * ratio)
+        return Vec2(
+            self.x + (target.x - self.x) * ratio,
+            self.y + (target.y - self.y) * ratio,
+        )
 
 
 @dataclass
 class Bee:
     id: str
     pos: Vec2
+    hive_id: str = "hive_0"
+    color: str = "#f5c518"
     state: BeeState = BeeState.IDLE
     nectar: float = 0.0
     target_flower_id: Optional[str] = None
@@ -57,6 +74,8 @@ class Bee:
             "state": self.state.value,
             "nectar": round(self.nectar, 3),
             "target_flower_id": self.target_flower_id,
+            "hive_id": self.hive_id,
+            "color": self.color,
         }
 
 
@@ -83,14 +102,16 @@ class Flower:
 
 @dataclass
 class Hive:
-    id: str = "hive"
+    id: str = "hive_0"
     pos: Vec2 = field(default_factory=lambda: Vec2(0, 0))
+    algorithm_name: str = "greedy"
+    color: str = "#f5c518"
     nectar: float = 0.0
     honey: float = 0.0
     nectar_to_honey_ratio: float = 3.0
 
     def process_nectar(self, amount: float) -> float:
-        """Add nectar and convert to honey. Returns honey produced."""
+        """Add raw nectar and convert surplus to honey (3:1). Returns honey produced."""
         self.nectar += amount
         honey_produced = 0.0
         while self.nectar >= self.nectar_to_honey_ratio:
@@ -105,19 +126,29 @@ class Hive:
             "type": "hive",
             "x": round(self.pos.x, 2),
             "y": round(self.pos.y, 2),
+            "algorithm_name": self.algorithm_name,
+            "color": self.color,
             "nectar": round(self.nectar, 3),
             "honey": round(self.honey, 3),
         }
 
 
-def make_bee(bee_id: str, canvas_w: float, canvas_h: float) -> Bee:
-    return Bee(
-        id=bee_id,
-        pos=Vec2(
-            random.uniform(canvas_w * 0.3, canvas_w * 0.7),
-            random.uniform(canvas_h * 0.3, canvas_h * 0.7),
-        ),
-    )
+def make_bee(
+    bee_id: str,
+    canvas_w: float,
+    canvas_h: float,
+    hive_id: str = "hive_0",
+    color: str = "#f5c518",
+    hive_pos: Optional[Vec2] = None,
+) -> Bee:
+    if hive_pos is not None:
+        scatter = 45.0
+        x = max(10.0, min(canvas_w - 10.0, hive_pos.x + random.uniform(-scatter, scatter)))
+        y = max(10.0, min(canvas_h - 10.0, hive_pos.y + random.uniform(-scatter, scatter)))
+    else:
+        x = random.uniform(canvas_w * 0.3, canvas_w * 0.7)
+        y = random.uniform(canvas_h * 0.3, canvas_h * 0.7)
+    return Bee(id=bee_id, pos=Vec2(x, y), hive_id=hive_id, color=color)
 
 
 def make_flower(flower_id: str, canvas_w: float, canvas_h: float) -> Flower:

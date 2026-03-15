@@ -10,9 +10,11 @@
   const statusDot   = document.getElementById('status-dot');
   const connBadge   = document.getElementById('conn-badge');
   const agentList   = document.getElementById('agent-list');
+  const hiveList    = document.getElementById('hive-list');
   const btnStart    = document.getElementById('btn-start');
   const btnStop     = document.getElementById('btn-stop');
   const btnReset    = document.getElementById('btn-reset');
+  const btnAddHive  = document.getElementById('btn-add-hive');
 
   // Topbar stats
   const statTick    = document.getElementById('stat-tick');
@@ -39,6 +41,7 @@
   // ── State ────────────────────────────────────────────────────────
   let simRunning = false;
   let lastSnapshot = null;
+  let cachedAlgorithms = [];  // [{name, description}] — stable after first snapshot
 
   // ── Init ─────────────────────────────────────────────────────────
   CanvasRenderer.init(canvas);
@@ -76,6 +79,10 @@
   });
 
   SwarmWS.onMessage((data) => {
+    // Cache algorithms list whenever it arrives (included in every snapshot)
+    if (data.algorithms && data.algorithms.length) {
+      cachedAlgorithms = data.algorithms;
+    }
     if (data.bees !== undefined) {
       lastSnapshot = data;
       CanvasRenderer.setState(data);
@@ -103,12 +110,17 @@
       sstatActive.textContent = snap.stats.active_bees ?? 0;
       sstatFlowers.textContent = snap.stats.open_flowers ?? 0;
     }
-    if (snap.hive) {
+    if (snap.stats && snap.stats.total_hive_nectar !== undefined) {
+      sstatHiveNectar.textContent = snap.stats.total_hive_nectar.toFixed(2);
+    } else if (snap.hive) {
       sstatHiveNectar.textContent = snap.hive.nectar ?? 0;
     }
 
     // Running state
     if (snap.running !== undefined) setRunning(snap.running);
+
+    // Hive management panel (right)
+    renderHiveManagement(snap.hives || (snap.hive ? [snap.hive] : []));
 
     // Agent list
     renderAgentList(snap);
@@ -158,47 +170,86 @@
     active:     'активен',
   };
 
+  // ── Hive management panel (right panel) ─────────────────────────
+  function renderHiveManagement(hives) {
+    if (!hiveList || !hives.length) return;
+
+    const buf = hives.map(hive => {
+      const opts = cachedAlgorithms.map(a =>
+        `<option value="${a.name}" ${a.name === hive.algorithm_name ? 'selected' : ''}>${a.description}</option>`
+      ).join('');
+      const rmBtn = hives.length > 1
+        ? `<button class="btn-rm-hive" data-hive="${hive.id}" title="Удалить улей">✕</button>`
+        : '';
+      return `
+        <div class="hive-item">
+          <span class="hive-dot" style="background:${hive.color || '#f5c518'}"></span>
+          <select class="hive-algo-select" data-hive="${hive.id}">${opts}</select>
+          <span class="hive-honey" title="Мёд">${(hive.honey || 0).toFixed(1)}</span>
+          ${rmBtn}
+        </div>`;
+    });
+    hiveList.innerHTML = buf.join('');
+
+    hiveList.querySelectorAll('.hive-algo-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        SwarmWS.send({ action: 'set_hive_algorithm', hive_id: sel.dataset.hive, algorithm_name: sel.value });
+      });
+    });
+    hiveList.querySelectorAll('.btn-rm-hive').forEach(btn => {
+      btn.addEventListener('click', () => {
+        SwarmWS.send({ action: 'remove_hive', hive_id: btn.dataset.hive });
+      });
+    });
+  }
+
   // ── Отрисовка списка агентов ──────────────────────────────────────
   function renderAgentList(snap) {
     const bees    = snap.bees    || [];
     const flowers = snap.flowers || [];
-    const hive    = snap.hive;
+    const hives   = snap.hives   || (snap.hive ? [snap.hive] : []);
+
+    // Build maps
+    const beesByHive = {};
+    hives.forEach(h => { beesByHive[h.id] = []; });
+    bees.forEach(b => {
+      const key = b.hive_id || (hives[0] && hives[0].id);
+      if (key && beesByHive[key]) beesByHive[key].push(b);
+    });
 
     const buf = [];
 
-    // Пчёлы
-    buf.push('<div class="agent-section-title">Пчёлы</div>');
-    for (const bee of bees) {
-      const stateRu = STATE_RU[bee.state] || bee.state;
+    // Пчёлы, сгруппированные по улью
+    for (const hive of hives) {
+      const c = hive.color || '#f5c518';
       buf.push(`
-        <div class="agent-item">
-          <span class="agent-name">${bee.id}</span>
-          <span class="agent-state state-${bee.state}">${stateRu}</span>
-          <span class="agent-detail">(${bee.x}, ${bee.y}) &nbsp; нектар: ${bee.nectar.toFixed(2)}</span>
+        <div class="agent-section-title">
+          <span class="agent-section-dot" style="background:${c}"></span>
+          <span style="color:${c}">${hive.id}</span>
         </div>`);
+      for (const bee of (beesByHive[hive.id] || [])) {
+        const stRu = STATE_RU[bee.state] || bee.state;
+        buf.push(`
+          <div class="agent-item">
+            <span class="agent-name">${bee.id}</span>
+            <span class="agent-state state-${bee.state}">${stRu}</span>
+            <span class="agent-detail">(${bee.x}, ${bee.y}) &nbsp; нектар: ${bee.nectar.toFixed(2)}</span>
+          </div>`);
+      }
     }
 
     // Цветы
-    buf.push('<div class="agent-section-title" style="margin-top:8px">Цветы</div>');
-    for (const f of flowers) {
-      const stateRu = STATE_RU[f.state] || f.state;
-      buf.push(`
-        <div class="agent-item">
-          <span class="agent-name">${f.id}</span>
-          <span class="agent-state state-${f.state}">${stateRu}</span>
-          <span class="agent-detail">(${f.x}, ${f.y}) &nbsp; нектар: ${f.nectar.toFixed(2)}</span>
-        </div>`);
-    }
-
-    // Улей
-    if (hive) {
-      buf.push('<div class="agent-section-title" style="margin-top:8px">Улей</div>');
-      buf.push(`
-        <div class="agent-item">
-          <span class="agent-name">улей</span>
-          <span class="agent-state state-open">активен</span>
-          <span class="agent-detail">нектар: ${hive.nectar.toFixed(2)} &nbsp; мёд: ${hive.honey.toFixed(2)}</span>
-        </div>`);
+    if (flowers.length) {
+      buf.push('<div class="agent-section-title" style="margin-top:6px"><span class="agent-section-dot" style="background:var(--green)"></span><span>Цветы</span></div>');
+      for (const f of flowers) {
+        const stRu = STATE_RU[f.state] || f.state;
+        buf.push(`
+          <div class="agent-item">
+            <span class="agent-name">${f.id}</span>
+            <span class="agent-state state-${f.state}">${stRu}</span>
+            <span class="agent-detail">(${f.x}, ${f.y}) &nbsp; нектар: ${f.nectar.toFixed(2)}</span>
+          </div>`);
+      }
     }
 
     agentList.innerHTML = buf.join('');
@@ -219,6 +270,15 @@
     params.canvas_h = canvas.height;
     SwarmWS.send({ action: 'reset', params });
   });
+
+  if (btnAddHive) {
+    btnAddHive.addEventListener('click', () => {
+      // Default: same algorithm as the last hive in the list
+      const selects = hiveList ? hiveList.querySelectorAll('.hive-algo-select') : [];
+      const algo = selects.length ? selects[selects.length - 1].value : 'greedy';
+      SwarmWS.send({ action: 'add_hive', algorithm_name: algo });
+    });
+  }
 
   // ── Slider handlers ──────────────────────────────────────────────
   for (const [slId, cfg] of Object.entries(sliders)) {
