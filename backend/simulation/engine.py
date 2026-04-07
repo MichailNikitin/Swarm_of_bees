@@ -90,11 +90,18 @@ class SimulationEngine:
         hive_id = f"hive_{idx}"
         color = HIVE_COLORS[idx % len(HIVE_COLORS)]
 
-        # Reposition ALL hives in a circle
+        # Reposition ALL hives in a circle and shift their bees accordingly
         new_count = len(self.state.hives) + 1
         positions = self._hive_positions(new_count)
         for i, hive in enumerate(self.state.hives.values()):
+            old_pos = hive.pos
             hive.pos = positions[i]
+            dx = hive.pos.x - old_pos.x
+            dy = hive.pos.y - old_pos.y
+            for bee in self.state.bees.values():
+                if bee.hive_id == hive.id:
+                    bee.pos.x += dx
+                    bee.pos.y += dy
         new_pos = positions[-1]
 
         hive = Hive(id=hive_id, pos=new_pos, algorithm_name=algorithm_name, color=color)

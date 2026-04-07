@@ -37,6 +37,11 @@ const CanvasRenderer = (() => {
 
   let canvas, ctx, state = null;
   let animId = null;
+  let selection = { beeId: null, hiveId: null };
+
+  function setSelection(sel) {
+    selection = sel;
+  }
 
   function init(canvasEl) {
     canvas = canvasEl;
@@ -178,7 +183,23 @@ const CanvasRenderer = (() => {
   function drawHive(hive) {
     const r = SIZES.hive;
     const color = hive.color || COLORS.bee;
+    const isSelected = selection.hiveId === hive.id;
     ctx.save();
+
+    // Selection highlight ring
+    if (isSelected) {
+      ctx.beginPath();
+      ctx.arc(hive.x, hive.y, r + 6, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(hive.x, hive.y, r + 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
 
     // Hexagon
     ctx.beginPath();
@@ -236,7 +257,23 @@ const CanvasRenderer = (() => {
   function drawBee(bee) {
     const r = SIZES.bee;
     const beeColor = bee.color || COLORS.bee;
+    const isSelected = selection.beeId === bee.id;
     ctx.save();
+
+    // Selection highlight ring
+    if (isSelected) {
+      ctx.beginPath();
+      ctx.arc(bee.x, bee.y, r + 5, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(bee.x, bee.y, r + 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
 
     // Glow for collecting bees
     if (bee.state === 'collecting') {
@@ -244,7 +281,7 @@ const CanvasRenderer = (() => {
       ctx.shadowBlur = 8;
     }
 
-    ctx.globalAlpha = bee.state === 'idle' ? 0.45 : 1.0;
+    ctx.globalAlpha = bee.state === 'idle' && !isSelected ? 0.45 : 1.0;
 
     // Body
     ctx.beginPath();
@@ -289,5 +326,5 @@ const CanvasRenderer = (() => {
   }
 
   // ── Public API ─────────────────────────────────────────────────────
-  return { init, setState, resize };
+  return { init, setState, resize, setSelection };
 })();

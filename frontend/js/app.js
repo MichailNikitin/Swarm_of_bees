@@ -42,6 +42,8 @@
   let simRunning = false;
   let lastSnapshot = null;
   let cachedAlgorithms = [];  // [{name, description}] — stable after first snapshot
+  let selectedBeeId = null;
+  let selectedHiveId = null;
 
   // ── Init ─────────────────────────────────────────────────────────
   CanvasRenderer.init(canvas);
@@ -203,6 +205,80 @@
     });
   }
 
+  // ── Человекочитаемые имена ─────────────────────────────────────────
+  function hiveLabel(hiveId, index) {
+    return `Улей ${index + 1}`;
+  }
+
+  function beeLabel(beeId, indexInHive) {
+    return `Пчела ${indexInHive + 1}`;
+  }
+
+  function flowerLabel(flowerId, index) {
+    return `Цветок ${index + 1}`;
+  }
+
+  // ── Выбор агента (общая логика) ────────────────────────────────────
+  function applySelection(beeId, hiveId) {
+    selectedBeeId = beeId;
+    selectedHiveId = hiveId;
+    CanvasRenderer.setSelection({ beeId, hiveId });
+    if (lastSnapshot) renderAgentList(lastSnapshot);
+    // Прокрутить список к выбранному элементу
+    const sel = agentList.querySelector('.selected');
+    if (sel) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  // ── Делегирование кликов по списку агентов (один раз) ─────────────
+  agentList.addEventListener('click', (e) => {
+    const beeEl = e.target.closest('[data-bee-id]');
+    if (beeEl) {
+      const id = beeEl.dataset.beeId;
+      applySelection(selectedBeeId === id ? null : id, null);
+      return;
+    }
+    const hiveEl = e.target.closest('[data-hive-id]');
+    if (hiveEl) {
+      const id = hiveEl.dataset.hiveId;
+      applySelection(null, selectedHiveId === id ? null : id);
+    }
+  });
+
+  // ── Клик по канвасу — выбор пчелы/улья ────────────────────────────
+  canvas.addEventListener('click', (e) => {
+    if (!lastSnapshot) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // Проверяем пчёл (приоритет — мелкие объекты сложнее кликнуть)
+    const bees = lastSnapshot.bees || [];
+    let closestBee = null, closestBeeDist = 18; // радиус захвата
+    for (const bee of bees) {
+      const d = Math.hypot(bee.x - mx, bee.y - my);
+      if (d < closestBeeDist) { closestBee = bee; closestBeeDist = d; }
+    }
+    if (closestBee) {
+      applySelection(selectedBeeId === closestBee.id ? null : closestBee.id, null);
+      return;
+    }
+
+    // Проверяем ульи
+    const hives = lastSnapshot.hives || [];
+    let closestHive = null, closestHiveDist = 36;
+    for (const hive of hives) {
+      const d = Math.hypot(hive.x - mx, hive.y - my);
+      if (d < closestHiveDist) { closestHive = hive; closestHiveDist = d; }
+    }
+    if (closestHive) {
+      applySelection(null, selectedHiveId === closestHive.id ? null : closestHive.id);
+      return;
+    }
+
+    // Клик в пустоту — снять выделение
+    if (selectedBeeId || selectedHiveId) applySelection(null, null);
+  });
+
   // ── Отрисовка списка агентов ──────────────────────────────────────
   function renderAgentList(snap) {
     const bees    = snap.bees    || [];
@@ -220,36 +296,38 @@
     const buf = [];
 
     // Пчёлы, сгруппированные по улью
-    for (const hive of hives) {
+    hives.forEach((hive, hiveIdx) => {
       const c = hive.color || '#f5c518';
+      const hiveSelected = selectedHiveId === hive.id;
       buf.push(`
-        <div class="agent-section-title">
+        <div class="agent-section-title selectable ${hiveSelected ? 'selected' : ''}" data-hive-id="${hive.id}">
           <span class="agent-section-dot" style="background:${c}"></span>
-          <span style="color:${c}">${hive.id}</span>
+          <span style="color:${c}">${hiveLabel(hive.id, hiveIdx)}</span>
         </div>`);
-      for (const bee of (beesByHive[hive.id] || [])) {
+      (beesByHive[hive.id] || []).forEach((bee, beeIdx) => {
         const stRu = STATE_RU[bee.state] || bee.state;
+        const beeSelected = selectedBeeId === bee.id;
         buf.push(`
-          <div class="agent-item">
-            <span class="agent-name">${bee.id}</span>
+          <div class="agent-item selectable ${beeSelected ? 'selected' : ''}" data-bee-id="${bee.id}">
+            <span class="agent-name">${beeLabel(bee.id, beeIdx)}</span>
             <span class="agent-state state-${bee.state}">${stRu}</span>
-            <span class="agent-detail">(${bee.x}, ${bee.y}) &nbsp; нектар: ${bee.nectar.toFixed(2)}</span>
+            <span class="agent-detail">нектар: ${bee.nectar.toFixed(2)}</span>
           </div>`);
-      }
-    }
+      });
+    });
 
     // Цветы
     if (flowers.length) {
       buf.push('<div class="agent-section-title" style="margin-top:6px"><span class="agent-section-dot" style="background:var(--green)"></span><span>Цветы</span></div>');
-      for (const f of flowers) {
+      flowers.forEach((f, fIdx) => {
         const stRu = STATE_RU[f.state] || f.state;
         buf.push(`
           <div class="agent-item">
-            <span class="agent-name">${f.id}</span>
+            <span class="agent-name">${flowerLabel(f.id, fIdx)}</span>
             <span class="agent-state state-${f.state}">${stRu}</span>
-            <span class="agent-detail">(${f.x}, ${f.y}) &nbsp; нектар: ${f.nectar.toFixed(2)}</span>
+            <span class="agent-detail">нектар: ${f.nectar.toFixed(2)}</span>
           </div>`);
-      }
+      });
     }
 
     agentList.innerHTML = buf.join('');

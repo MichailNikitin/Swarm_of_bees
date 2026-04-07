@@ -87,6 +87,11 @@ html, body {
   transition: background 0.1s;
 }
 .agent-item:hover { background: var(--surface2); }
+.agent-item.selectable { cursor: pointer; }
+.agent-item.selected { background: var(--surface2); border-left: 2px solid var(--accent); }
+.agent-section-title.selectable { cursor: pointer; border-radius: 4px; transition: background 0.1s; }
+.agent-section-title.selectable:hover { background: var(--surface2); }
+.agent-section-title.selected { background: var(--surface2); border-left: 2px solid var(--accent); }
 
 .agent-name {
   font-weight: 600;
