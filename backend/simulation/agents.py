@@ -5,7 +5,7 @@ import math
 import random
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 # Palette assigned to hives in order; cycles if more than 8 hives
 HIVE_COLORS = [
@@ -26,6 +26,10 @@ class BeeState(str, Enum):
     COLLECTING = "collecting"
     TO_HIVE = "to_hive"
     UNLOADING = "unloading"
+    RETURNING_HOME = "returning_home"
+    RESTING = "resting"
+    UNCONSCIOUS = "unconscious"
+    CARRYING = "carrying"
 
 
 class FlowerState(str, Enum):
@@ -64,6 +68,10 @@ class Bee:
     max_nectar: float = 1.0
     collect_rate: float = 0.2
     unload_rate: float = 0.5
+    energy: float = 100.0
+    max_energy: float = 100.0
+    carry_target_id: Optional[str] = None
+    carried_by: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -76,6 +84,10 @@ class Bee:
             "target_flower_id": self.target_flower_id,
             "hive_id": self.hive_id,
             "color": self.color,
+            "energy": round(self.energy, 1),
+            "max_energy": self.max_energy,
+            "carry_target_id": self.carry_target_id,
+            "carried_by": list(self.carried_by),
         }
 
 
@@ -151,13 +163,74 @@ def make_bee(
     return Bee(id=bee_id, pos=Vec2(x, y), hive_id=hive_id, color=color)
 
 
-def make_flower(flower_id: str, canvas_w: float, canvas_h: float) -> Flower:
-    margin = 60
-    return Flower(
-        id=flower_id,
-        pos=Vec2(
+BEE_RADIUS = 7.0  # physical radius for collision detection
+
+
+class ObstacleKind(str, Enum):
+    TREE = "tree"
+    ROCK = "rock"
+    BUSH = "bush"
+
+
+@dataclass
+class Obstacle:
+    id: str
+    pos: Vec2
+    radius: float = 30.0
+    kind: ObstacleKind = ObstacleKind.TREE
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "x": round(self.pos.x, 2),
+            "y": round(self.pos.y, 2),
+            "radius": self.radius,
+            "kind": self.kind.value,
+        }
+
+
+def make_obstacle(obs_id: str, canvas_w: float, canvas_h: float, existing: list) -> Obstacle:
+    """Create an obstacle at a random position that doesn't overlap existing ones."""
+    kind = random.choice(list(ObstacleKind))
+    radius = {"tree": 35.0, "rock": 25.0, "bush": 20.0}[kind.value]
+    margin = 80  # keep away from edges
+    for _ in range(50):  # retry to avoid overlap
+        pos = Vec2(
             random.uniform(margin, canvas_w - margin),
             random.uniform(margin, canvas_h - margin),
-        ),
-        nectar=random.uniform(2.0, 5.0),
-    )
+        )
+        # Don't place too close to center (hive area)
+        cx, cy = canvas_w / 2, canvas_h / 2
+        if math.hypot(pos.x - cx, pos.y - cy) < 100:
+            continue
+        ok = True
+        for other in existing:
+            if pos.distance_to(other.pos) < (radius + other.radius + 30):
+                ok = False
+                break
+        if ok:
+            return Obstacle(id=obs_id, pos=pos, radius=radius, kind=kind)
+    # Fallback — place anyway
+    return Obstacle(id=obs_id, pos=pos, radius=radius, kind=kind)
+
+
+def make_flower(
+    flower_id: str, canvas_w: float, canvas_h: float,
+    obstacles: Optional[list] = None,
+) -> Flower:
+    margin = 60
+    for _ in range(30):
+        pos = Vec2(
+            random.uniform(margin, canvas_w - margin),
+            random.uniform(margin, canvas_h - margin),
+        )
+        if obstacles:
+            ok = all(
+                pos.distance_to(o.pos) > o.radius + 20
+                for o in obstacles
+            )
+            if not ok:
+                continue
+        return Flower(id=flower_id, pos=pos, nectar=random.uniform(2.0, 5.0))
+    # Fallback
+    return Flower(id=flower_id, pos=pos, nectar=random.uniform(2.0, 5.0))

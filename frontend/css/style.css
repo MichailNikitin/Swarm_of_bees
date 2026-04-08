@@ -125,6 +125,10 @@ html, body {
 .state-unloading  { background: #3a1010; color: #e74c3c; }
 .state-open       { background: #1a3a2a; color: #4caf50; }
 .state-closed     { background: #2a2a2a; color: #607080; }
+.state-returning_home { background: #2a2a3a; color: #8a8aff; }
+.state-resting        { background: #1a2a3a; color: #6ab0ff; }
+.state-unconscious    { background: #3a1010; color: #ff4444; }
+.state-carrying       { background: #3a2a10; color: #e67e22; }
 
 /* section headings inside agent list */
 .agent-section-title {
@@ -187,12 +191,12 @@ html, body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: var(--bg);
+  background: #2a4a1e;
 }
 
 #sim-canvas {
   display: block;
-  background: var(--bg);
+  background: #2a4a1e;
 }
 
 /* ── Right panel controls ─────────────────────────────────────────── */

@@ -36,6 +36,7 @@
     'sl-tick-rate':    { valId: 'val-tick-rate',     param: 'tick_rate',    fmt: v => parseInt(v) },
     'sl-num-bees':     { valId: 'val-num-bees',      param: 'num_bees',     fmt: v => parseInt(v) },
     'sl-num-flowers':  { valId: 'val-num-flowers',   param: 'num_flowers',  fmt: v => parseInt(v) },
+    'sl-num-obstacles':{ valId: 'val-num-obstacles', param: 'num_obstacles',fmt: v => parseInt(v) },
   };
 
   // ── State ────────────────────────────────────────────────────────
@@ -111,6 +112,10 @@
       sstatHoney.textContent  = snap.stats.total_honey ?? 0;
       sstatActive.textContent = snap.stats.active_bees ?? 0;
       sstatFlowers.textContent = snap.stats.open_flowers ?? 0;
+      const sstatUnconscious = document.getElementById('sstat-unconscious');
+      if (sstatUnconscious) sstatUnconscious.textContent = snap.stats.unconscious_bees ?? 0;
+      const sstatResting = document.getElementById('sstat-resting');
+      if (sstatResting) sstatResting.textContent = snap.stats.resting_bees ?? 0;
     }
     if (snap.stats && snap.stats.total_hive_nectar !== undefined) {
       sstatHiveNectar.textContent = snap.stats.total_hive_nectar.toFixed(2);
@@ -145,6 +150,7 @@
       tick_rate:    'sl-tick-rate',
       num_bees:     'sl-num-bees',
       num_flowers:  'sl-num-flowers',
+      num_obstacles:'sl-num-obstacles',
     };
     for (const [key, slId] of Object.entries(map)) {
       if (params[key] === undefined) continue;
@@ -162,14 +168,18 @@
 
   // Перевод состояний агентов на русский
   const STATE_RU = {
-    idle:       'ожидание',
-    to_flower:  'к цветку',
-    collecting: 'сбор',
-    to_hive:    'к улью',
-    unloading:  'разгрузка',
-    open:       'открыт',
-    closed:     'закрыт',
-    active:     'активен',
+    idle:            'ожидание',
+    to_flower:       'к цветку',
+    collecting:      'сбор',
+    to_hive:         'к улью',
+    unloading:       'разгрузка',
+    returning_home:  'домой',
+    resting:         'отдых',
+    unconscious:     'без сознания',
+    carrying:        'несёт',
+    open:            'открыт',
+    closed:          'закрыт',
+    active:          'активен',
   };
 
   // ── Hive management panel (right panel) ─────────────────────────
@@ -311,7 +321,7 @@
           <div class="agent-item selectable ${beeSelected ? 'selected' : ''}" data-bee-id="${bee.id}">
             <span class="agent-name">${beeLabel(bee.id, beeIdx)}</span>
             <span class="agent-state state-${bee.state}">${stRu}</span>
-            <span class="agent-detail">нектар: ${bee.nectar.toFixed(2)}</span>
+            <span class="agent-detail">нектар: ${bee.nectar.toFixed(2)} | энергия: ${(bee.energy ?? 100).toFixed(0)}%</span>
           </div>`);
       });
     });

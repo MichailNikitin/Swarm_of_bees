@@ -4,6 +4,7 @@ from .nearest import NearestAlgorithm
 from .round_robin import RoundRobinAlgorithm
 from .probabilistic import ProbabilisticAlgorithm
 from .custom_example import SelectiveAlgorithm
+from .safety import SafetyAlgorithm
 from .registry import get_algorithm, list_algorithms, _REGISTRY
 
 __all__ = [
@@ -15,4 +16,5 @@ __all__ = [
     "RoundRobinAlgorithm",
     "ProbabilisticAlgorithm",
     "SelectiveAlgorithm",
+    "SafetyAlgorithm",
 ]
