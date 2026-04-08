@@ -32,6 +32,7 @@
   // Sliders
   const sliders = {
     'sl-bee-speed':    { valId: 'val-bee-speed',    param: 'bee_speed',    fmt: v => parseFloat(v).toFixed(1) },
+    'sl-separation-distance': { valId: 'val-separation-distance', param: 'separation_distance', fmt: v => parseInt(v) },
     'sl-nectar-regen': { valId: 'val-nectar-regen', param: 'nectar_regen', fmt: v => parseFloat(v).toFixed(2) },
     'sl-tick-rate':    { valId: 'val-tick-rate',     param: 'tick_rate',    fmt: v => parseInt(v) },
     'sl-num-bees':     { valId: 'val-num-bees',      param: 'num_bees',     fmt: v => parseInt(v) },
@@ -146,6 +147,7 @@
   function syncSliders(params) {
     const map = {
       bee_speed:    'sl-bee-speed',
+      separation_distance: 'sl-separation-distance',
       nectar_regen: 'sl-nectar-regen',
       tick_rate:    'sl-tick-rate',
       num_bees:     'sl-num-bees',

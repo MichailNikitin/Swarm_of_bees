@@ -18,8 +18,11 @@ from .controller import SwarmController
 DEFAULT_CANVAS_W = 900
 DEFAULT_CANVAS_H = 600
 ARRIVAL_THRESHOLD = 8.0   # px — for flowers
-HIVE_ARRIVAL = 56.0       # px — hive territory radius (matches visual size)
-SEPARATION_DIST = BEE_RADIUS * 3.5  # bees start repelling at this distance
+# The hive is drawn much larger than its logical arrival zone on purpose:
+# bees should visually fly inside the hive before they start unloading/resting.
+HIVE_CORE_ARRIVAL = 10.0   # px — actual arrival radius near the hive center
+HIVE_REST_RADIUS = 56.0    # px — bees can rest/recover anywhere inside the hive area
+DEFAULT_SEPARATION_DIST = 25.0  # px — default safe zone radius around each bee
 OBSTACLE_MARGIN = 8.0     # extra clearance around obstacles
 
 # States where bee is "at the hive" and shouldn't be pushed away by separation
@@ -29,6 +32,7 @@ _HIVE_STATES = frozenset({BeeState.RESTING, BeeState.UNLOADING, BeeState.IDLE})
 @dataclass
 class SimParams:
     bee_speed: float = 3.0
+    separation_distance: float = DEFAULT_SEPARATION_DIST
     nectar_regen: float = 0.05
     bees_per_hive: int = 10
     num_flowers: int = 5
@@ -170,6 +174,7 @@ class SimulationEngine:
             },
             "params": {
                 "bee_speed": p.bee_speed,
+                "separation_distance": p.separation_distance,
                 "nectar_regen": p.nectar_regen,
                 "num_bees": p.bees_per_hive,
                 "num_flowers": p.num_flowers,
@@ -271,6 +276,8 @@ class SimulationEngine:
         p = self.params
         if "bee_speed" in data:
             p.bee_speed = float(data["bee_speed"])
+        if "separation_distance" in data:
+            p.separation_distance = max(BEE_RADIUS * 2.0, float(data["separation_distance"]))
         if "nectar_regen" in data:
             p.nectar_regen = float(data["nectar_regen"])
             for flower in self.state.flowers.values():
@@ -283,7 +290,7 @@ class SimulationEngine:
         if "num_flowers" in data:
             self._resize_flowers(int(data["num_flowers"]))
         if "tick_rate" in data:
-            p.tick_rate = max(1.0, min(30.0, float(data["tick_rate"])))
+            p.tick_rate = max(1.0, min(90.0, float(data["tick_rate"])))
         if "canvas_w" in data:
             p.canvas_w = float(data["canvas_w"])
         if "canvas_h" in data:
@@ -323,10 +330,11 @@ class SimulationEngine:
 
     def _bee_near_own_hive(self, bee: Bee) -> bool:
         hive = self.state.hives.get(bee.hive_id)
-        return hive is not None and bee.pos.distance_to(hive.pos) < HIVE_ARRIVAL
+        return hive is not None and bee.pos.distance_to(hive.pos) < HIVE_REST_RADIUS
 
     def _steer_move(self, bee: Bee, target: Vec2, speed: float) -> None:
         """Move bee toward target while avoiding obstacles and other bees."""
+        p = self.params
         dx = target.x - bee.pos.x
         dy = target.y - bee.pos.y
         dist = math.hypot(dx, dy)
@@ -354,6 +362,7 @@ class SimulationEngine:
 
         # --- Bee separation (skip if both bees are resting at their hive) ---
         bee_at_hive = bee.state in _HIVE_STATES and self._bee_near_own_hive(bee)
+        separation_dist = p.separation_distance
         for other in self.state.bees.values():
             if other.id == bee.id:
                 continue
@@ -364,8 +373,8 @@ class SimulationEngine:
             bx = bee.pos.x - other.pos.x
             by = bee.pos.y - other.pos.y
             bdist = math.hypot(bx, by)
-            if bdist < SEPARATION_DIST and bdist > 0.1:
-                force = (SEPARATION_DIST - bdist) / SEPARATION_DIST * 1.2
+            if bdist < separation_dist and bdist > 0.1:
+                force = (separation_dist - bdist) / separation_dist * 1.2
                 steer_x += (bx / bdist) * force
                 steer_y += (by / bdist) * force
 
@@ -391,7 +400,6 @@ class SimulationEngine:
                 new_y = obs.pos.y + (oy / odist) * min_dist
 
         # Clamp to canvas
-        p = self.params
         new_x = max(BEE_RADIUS, min(p.canvas_w - BEE_RADIUS, new_x))
         new_y = max(BEE_RADIUS, min(p.canvas_h - BEE_RADIUS, new_y))
 
@@ -477,7 +485,7 @@ class SimulationEngine:
                 self._steer_move(bee, hive.pos, speed)
                 if not self._drain_energy(bee, p.energy_drain_move):
                     continue
-                if bee.pos.distance_to(hive.pos) < HIVE_ARRIVAL:
+                if bee.pos.distance_to(hive.pos) < HIVE_CORE_ARRIVAL:
                     bee.state = BeeState.UNLOADING
 
             elif bee.state == BeeState.UNLOADING:
@@ -503,7 +511,7 @@ class SimulationEngine:
                 self._steer_move(bee, hive.pos, speed)
                 if not self._drain_energy(bee, p.energy_drain_move):
                     continue
-                if bee.pos.distance_to(hive.pos) < HIVE_ARRIVAL:
+                if bee.pos.distance_to(hive.pos) < HIVE_REST_RADIUS:
                     bee.state = BeeState.RESTING
 
             elif bee.state == BeeState.RESTING:
@@ -571,7 +579,7 @@ class SimulationEngine:
                     target.pos.y = sum(c.pos.y for c in alive_carriers) / len(alive_carriers)
 
                 # Check arrival at hive
-                if target.pos.distance_to(target_hive.pos) < HIVE_ARRIVAL:
+                if target.pos.distance_to(target_hive.pos) < HIVE_REST_RADIUS:
                     target.state = BeeState.RESTING
                     target.carried_by.clear()
                     for c in alive_carriers:
