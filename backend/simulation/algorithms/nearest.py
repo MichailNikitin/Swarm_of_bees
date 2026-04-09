@@ -24,12 +24,9 @@ class NearestAlgorithm(BaseSwarmAlgorithm):
         bees: List[Bee],
         flowers: Dict[str, Flower],
     ) -> None:
-        open_flowers = [f for f in flowers.values() if f.state == FlowerState.OPEN]
-        if not open_flowers:
-            return
-        for bee in bees:
-            if bee.state != BeeState.IDLE:
-                continue
-            nearest = min(open_flowers, key=lambda f: bee.pos.distance_to(f.pos))
-            bee.target_flower_id = nearest.id
-            bee.state = BeeState.TO_FLOWER
+        self._assign_balanced(
+            bees,
+            flowers,
+            lambda bee, flower, load, capacity:
+                flower.nectar * 2.0 - bee.pos.distance_to(flower.pos) / 6.0,
+        )

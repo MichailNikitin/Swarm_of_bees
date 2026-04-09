@@ -23,6 +23,8 @@ ARRIVAL_THRESHOLD = 8.0   # px — for flowers
 HIVE_CORE_ARRIVAL = 10.0   # px — actual arrival radius near the hive center
 HIVE_REST_RADIUS = 56.0    # px — bees can rest/recover anywhere inside the hive area
 DEFAULT_SEPARATION_DIST = 25.0  # px — default safe zone radius around each bee
+FLOWER_SLOT_RADIUS = 10.0  # px — distinct arrival slots around flowers reduce pile-ups
+RESCUE_SLOT_RADIUS = 10.0  # px — carriers approach unconscious bees from different sides
 OBSTACLE_MARGIN = 8.0     # extra clearance around obstacles
 
 # States where bee is "at the hive" and shouldn't be pushed away by separation
@@ -332,6 +334,49 @@ class SimulationEngine:
         hive = self.state.hives.get(bee.hive_id)
         return hive is not None and bee.pos.distance_to(hive.pos) < HIVE_REST_RADIUS
 
+    @staticmethod
+    def _stable_angle(key: str) -> float:
+        total = sum((idx + 1) * ord(ch) for idx, ch in enumerate(key))
+        return math.radians(total % 360)
+
+    def _slot_point(self, center: Vec2, key: str, radius: float) -> Vec2:
+        angle = self._stable_angle(key)
+        return Vec2(
+            center.x + math.cos(angle) * radius,
+            center.y + math.sin(angle) * radius,
+        )
+
+    def _flower_approach_point(self, bee: Bee, flower: Flower) -> Vec2:
+        return self._slot_point(
+            flower.pos,
+            f"flower:{flower.id}:{bee.id}",
+            FLOWER_SLOT_RADIUS,
+        )
+
+    def _rescue_approach_point(self, carrier: Bee, target: Bee) -> Vec2:
+        return self._slot_point(
+            target.pos,
+            f"rescue:{target.id}:{carrier.id}",
+            RESCUE_SLOT_RADIUS,
+        )
+
+    def _ignore_separation(self, bee: Bee, other: Bee) -> bool:
+        """Allow tight formation only for rescue pickup interactions."""
+        if bee.state != BeeState.CARRYING:
+            return False
+
+        # A carrier must be able to close in on the unconscious bee it is picking up.
+        if bee.carry_target_id == other.id and other.state == BeeState.UNCONSCIOUS:
+            return True
+
+        # Carriers assigned to the same unconscious bee must also be allowed to
+        # converge during pickup, otherwise the safe-distance rule keeps them in a deadlock.
+        return (
+            other.state == BeeState.CARRYING
+            and bee.carry_target_id is not None
+            and bee.carry_target_id == other.carry_target_id
+        )
+
     def _steer_move(self, bee: Bee, target: Vec2, speed: float) -> None:
         """Move bee toward target while avoiding obstacles and other bees."""
         p = self.params
@@ -366,6 +411,8 @@ class SimulationEngine:
         for other in self.state.bees.values():
             if other.id == bee.id:
                 continue
+            if self._ignore_separation(bee, other):
+                continue
             # Don't push apart bees that are both hanging out at the hive
             if bee_at_hive and other.state in _HIVE_STATES \
                     and other.hive_id == bee.hive_id:
@@ -377,6 +424,16 @@ class SimulationEngine:
                 force = (separation_dist - bdist) / separation_dist * 1.2
                 steer_x += (bx / bdist) * force
                 steer_y += (by / bdist) * force
+
+                # Add a small deterministic sidestep to break deadlocks when
+                # bees approach the same corridor from opposite/similar angles.
+                lateral_gap = abs(dir_x * by - dir_y * bx)
+                if lateral_gap < separation_dist * 0.6:
+                    side = -1.0 if bee.id < other.id else 1.0
+                    lane_force = 1.0 - lateral_gap / max(1.0, separation_dist * 0.6)
+                    lane_force *= max(0.0, 1.0 - bdist / (separation_dist * 1.4))
+                    steer_x += (-dir_y) * side * lane_force * 0.35
+                    steer_y += dir_x * side * lane_force * 0.35
 
         # Normalize and apply speed
         mag = math.hypot(steer_x, steer_y)
@@ -456,10 +513,11 @@ class SimulationEngine:
                     bee.state = BeeState.IDLE
                     bee.target_flower_id = None
                     continue
-                self._steer_move(bee, flower.pos, speed)
+                flower_target = self._flower_approach_point(bee, flower)
+                self._steer_move(bee, flower_target, speed)
                 if not self._drain_energy(bee, p.energy_drain_move):
                     continue
-                if bee.pos.distance_to(flower.pos) < ARRIVAL_THRESHOLD:
+                if bee.pos.distance_to(flower_target) < ARRIVAL_THRESHOLD:
                     bee.state = BeeState.COLLECTING
 
             elif bee.state == BeeState.COLLECTING:
@@ -554,13 +612,14 @@ class SimulationEngine:
 
             # Move carriers toward the unconscious bee first, then toward hive
             arrived_at_target = all(
-                c.pos.distance_to(target.pos) < ARRIVAL_THRESHOLD for c in carriers
+                c.pos.distance_to(self._rescue_approach_point(c, target)) < ARRIVAL_THRESHOLD
+                for c in carriers
             )
 
             if not arrived_at_target:
                 # Carriers move toward the unconscious bee
                 for c in carriers:
-                    self._steer_move(c, target.pos, eff_speed)
+                    self._steer_move(c, self._rescue_approach_point(c, target), eff_speed)
                     if not self._drain_energy(c, p.energy_drain_carry):
                         if target and c.id in target.carried_by:
                             target.carried_by.remove(c.id)

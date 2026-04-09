@@ -27,13 +27,24 @@ class RoundRobinAlgorithm(BaseSwarmAlgorithm):
         bees: List[Bee],
         flowers: Dict[str, Flower],
     ) -> None:
-        open_flowers = [f for f in flowers.values() if f.state == FlowerState.OPEN]
+        open_flowers = self._open_flowers(flowers)
         if not open_flowers:
             return
-        for bee in bees:
-            if bee.state != BeeState.IDLE:
-                continue
-            flower = open_flowers[self._counter % len(open_flowers)]
-            bee.target_flower_id = flower.id
-            bee.state = BeeState.TO_FLOWER
-            self._counter += 1
+
+        loads = self._flower_loads(bees)
+        for bee in self._idle_bees(bees, open_flowers):
+            ordered = [
+                open_flowers[(self._counter + i) % len(open_flowers)]
+                for i in range(len(open_flowers))
+            ]
+            chosen = min(
+                ordered,
+                key=lambda flower: (
+                    max(0, loads.get(flower.id, 0) - self._flower_capacity(flower) + 1),
+                    loads.get(flower.id, 0),
+                    bee.pos.distance_to(flower.pos),
+                ),
+            )
+            self._assign_bee_to_flower(bee, chosen)
+            loads[chosen.id] = loads.get(chosen.id, 0) + 1
+            self._counter = (self._counter + 1) % len(open_flowers)

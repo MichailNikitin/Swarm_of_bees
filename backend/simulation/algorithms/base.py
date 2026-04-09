@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Callable, Dict, List
 
 if TYPE_CHECKING:
     from ..agents import Bee, Flower, Hive
 
-from ..agents import BeeState
+from ..agents import BeeState, FlowerState
 
 
 class BaseSwarmAlgorithm(ABC):
@@ -100,3 +100,81 @@ class BaseSwarmAlgorithm(ABC):
             bee.state = BeeState.IDLE
             bee.target_flower_id = None
             needed -= 1
+
+    def _open_flowers(
+        self,
+        flowers: Dict[str, "Flower"],
+        *,
+        min_nectar: float = 0.0,
+    ) -> List["Flower"]:
+        return [
+            f for f in flowers.values()
+            if f.state == FlowerState.OPEN and f.nectar >= min_nectar
+        ]
+
+    def _flower_loads(self, bees: List["Bee"]) -> Dict[str, int]:
+        loads: Dict[str, int] = {}
+        for bee in bees:
+            if bee.target_flower_id and bee.state in (BeeState.TO_FLOWER, BeeState.COLLECTING):
+                loads[bee.target_flower_id] = loads.get(bee.target_flower_id, 0) + 1
+        return loads
+
+    def _flower_capacity(self, flower: "Flower") -> int:
+        """Estimate how many bees a flower can support without congestion."""
+        return max(1, min(4, int(flower.nectar / 1.5) + 1))
+
+    def _idle_bees(self, bees: List["Bee"], open_flowers: List["Flower"]) -> List["Bee"]:
+        if not open_flowers:
+            return []
+        idle = [bee for bee in bees if bee.state == BeeState.IDLE]
+        idle.sort(
+            key=lambda bee: (
+                min(bee.pos.distance_to(f.pos) for f in open_flowers),
+                -bee.energy,
+                bee.id,
+            )
+        )
+        return idle
+
+    def _assign_bee_to_flower(self, bee: "Bee", flower: "Flower") -> None:
+        bee.target_flower_id = flower.id
+        bee.state = BeeState.TO_FLOWER
+
+    def _assign_balanced(
+        self,
+        bees: List["Bee"],
+        flowers: Dict[str, "Flower"],
+        score_fn: Callable[["Bee", "Flower", int, int], float],
+        *,
+        min_nectar: float = 0.0,
+    ) -> None:
+        """
+        Shared task allocator that balances nectar value, distance, and flower load.
+
+        Concrete algorithms provide a score_fn for their own preference profile,
+        while this helper prevents too many bees from piling onto the same flower.
+        """
+        open_flowers = self._open_flowers(flowers, min_nectar=min_nectar)
+        if not open_flowers:
+            return
+
+        loads = self._flower_loads(bees)
+        for bee in self._idle_bees(bees, open_flowers):
+            best_flower = None
+            best_score = float("-inf")
+
+            for flower in open_flowers:
+                load = loads.get(flower.id, 0)
+                capacity = self._flower_capacity(flower)
+                overload = max(0, load - capacity + 1)
+                congestion_penalty = (load / capacity) * 2.0 + overload * 4.0
+                score = score_fn(bee, flower, load, capacity) - congestion_penalty
+                if score > best_score:
+                    best_score = score
+                    best_flower = flower
+
+            if best_flower is None:
+                continue
+
+            self._assign_bee_to_flower(bee, best_flower)
+            loads[best_flower.id] = loads.get(best_flower.id, 0) + 1

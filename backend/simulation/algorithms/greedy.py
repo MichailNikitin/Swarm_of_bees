@@ -24,17 +24,9 @@ class GreedyAlgorithm(BaseSwarmAlgorithm):
         bees: List[Bee],
         flowers: Dict[str, Flower],
     ) -> None:
-        open_flowers = sorted(
-            [f for f in flowers.values() if f.state == FlowerState.OPEN],
-            key=lambda f: f.nectar,
-            reverse=True,
+        self._assign_balanced(
+            bees,
+            flowers,
+            lambda bee, flower, load, capacity:
+                flower.nectar * 10.0 - bee.pos.distance_to(flower.pos) / 10.0,
         )
-        if not open_flowers:
-            return
-        idx = 0
-        for bee in bees:
-            if bee.state != BeeState.IDLE:
-                continue
-            bee.target_flower_id = open_flowers[idx % len(open_flowers)].id
-            bee.state = BeeState.TO_FLOWER
-            idx += 1

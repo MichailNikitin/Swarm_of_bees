@@ -26,14 +26,21 @@ class ProbabilisticAlgorithm(BaseSwarmAlgorithm):
         bees: List[Bee],
         flowers: Dict[str, Flower],
     ) -> None:
-        open_flowers = [f for f in flowers.values() if f.state == FlowerState.OPEN]
+        open_flowers = self._open_flowers(flowers)
         if not open_flowers:
             return
-        # Weight = nectar + small epsilon to keep all flowers reachable
-        weights = [f.nectar + 0.1 for f in open_flowers]
-        for bee in bees:
-            if bee.state != BeeState.IDLE:
-                continue
+        loads = self._flower_loads(bees)
+        for bee in self._idle_bees(bees, open_flowers):
+            weights = []
+            for flower in open_flowers:
+                load = loads.get(flower.id, 0)
+                capacity = self._flower_capacity(flower)
+                overload = max(0, load - capacity + 1)
+                distance_factor = 1.0 + bee.pos.distance_to(flower.pos) / 45.0
+                load_factor = (load + 1) ** 1.6
+                overload_factor = (overload + 1) ** 2.0
+                weight = (flower.nectar + 0.2) / distance_factor / load_factor / overload_factor
+                weights.append(max(0.01, weight))
             chosen = random.choices(open_flowers, weights=weights, k=1)[0]
-            bee.target_flower_id = chosen.id
-            bee.state = BeeState.TO_FLOWER
+            self._assign_bee_to_flower(bee, chosen)
+            loads[chosen.id] = loads.get(chosen.id, 0) + 1

@@ -52,20 +52,10 @@ class SelectiveAlgorithm(BaseSwarmAlgorithm):
         bees: List[Bee],
         flowers: Dict[str, Flower],
     ) -> None:
-        rich = sorted(
-            [
-                f for f in flowers.values()
-                if f.state == FlowerState.OPEN and f.nectar >= NECTAR_THRESHOLD
-            ],
-            key=lambda f: f.nectar,
-            reverse=True,
+        self._assign_balanced(
+            bees,
+            flowers,
+            lambda bee, flower, load, capacity:
+                flower.nectar * 11.0 - bee.pos.distance_to(flower.pos) / 11.0,
+            min_nectar=NECTAR_THRESHOLD,
         )
-        if not rich:
-            return  # Ждём — ни один цветок ещё не восполнился
-        idx = 0
-        for bee in bees:
-            if bee.state != BeeState.IDLE:
-                continue
-            bee.target_flower_id = rich[idx % len(rich)].id
-            bee.state = BeeState.TO_FLOWER
-            idx += 1
