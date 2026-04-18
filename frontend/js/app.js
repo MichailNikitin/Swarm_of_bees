@@ -15,6 +15,18 @@
   const btnStop     = document.getElementById('btn-stop');
   const btnReset    = document.getElementById('btn-reset');
   const btnAddHive  = document.getElementById('btn-add-hive');
+  const tabButtons = Array.from(document.querySelectorAll('.panel-tab'));
+  const tabControls = document.getElementById('tab-controls');
+  const tabCode = document.getElementById('tab-code');
+  const codeEditorPanel = document.getElementById('code-editor-panel');
+  const algoNameInput = document.getElementById('algo-name');
+  const algoDescriptionInput = document.getElementById('algo-description');
+  const algoSourceInput = document.getElementById('algo-source');
+  const btnSaveAlgo = document.getElementById('btn-save-algo');
+  const btnDeleteAlgo = document.getElementById('btn-delete-algo');
+  const algoError = document.getElementById('algo-error');
+  const algoDebugMeta = document.getElementById('algo-debug-meta');
+  const algoDebugConsole = document.getElementById('algo-debug-console');
 
   // Topbar stats
   const statTick    = document.getElementById('stat-tick');
@@ -46,10 +58,24 @@
   let cachedAlgorithms = [];  // [{name, description}] — stable after first snapshot
   let selectedBeeId = null;
   let selectedHiveId = null;
+  let activePanelTab = 'controls';
+  const DEFAULT_ALGO_SOURCE = `def tick(view):
+    commands = {}
+    for bee in view.bees:
+        if view.flowers:
+            flower = max(view.flowers, key=lambda f: f.nectar)
+            angle = math.atan2(flower.y - bee.y, flower.x - bee.x)
+            commands[bee.id] = cmd('move', angle)
+            debug('bee', bee.id, '->', flower.id, 'angle', round(angle, 2))
+        else:
+            commands[bee.id] = cmd('idle')
+    return commands
+`;
 
   // ── Init ─────────────────────────────────────────────────────────
   CanvasRenderer.init(canvas);
   SwarmWS.connect();
+  if (algoSourceInput && !algoSourceInput.value) algoSourceInput.value = DEFAULT_ALGO_SOURCE;
 
   // Notify backend of canvas size on resize
   function sendCanvasSize() {
@@ -86,6 +112,7 @@
     // Cache algorithms list whenever it arrives (included in every snapshot)
     if (data.algorithms && data.algorithms.length) {
       cachedAlgorithms = data.algorithms;
+      if (lastSnapshot) renderHiveManagement(lastSnapshot.hives || []);
     }
     if (data.bees !== undefined) {
       lastSnapshot = data;
@@ -96,6 +123,25 @@
     if (data.event === 'stopped') setRunning(false);
     if (data.event === 'reset')   { setRunning(false); if (data.bees) { CanvasRenderer.setState(data); updateUI(data); } }
     if (data.event === 'params_updated' && data.params) syncSliders(data.params);
+    if (data.event === 'algorithm_saved') {
+      hideAlgoError();
+      if (data.name) algoNameInput.value = data.name;
+      switchPanelTab('code');
+    }
+    if (data.event === 'algorithm_save_error') {
+      showAlgoError(data.error || 'Не удалось сохранить алгоритм.');
+      switchPanelTab('code');
+    }
+    if (data.event === 'algorithm_deleted') {
+      hideAlgoError();
+    }
+    if (data.event === 'user_algorithm_source' && data.source !== undefined && data.source !== null) {
+      const meta = getAlgorithmMeta(data.name);
+      algoNameInput.value = data.name || '';
+      algoDescriptionInput.value = meta ? meta.description : '';
+      algoSourceInput.value = data.source || DEFAULT_ALGO_SOURCE;
+      switchPanelTab('code');
+    }
   });
 
   // ── UI update ────────────────────────────────────────────────────
@@ -129,6 +175,7 @@
 
     // Hive management panel (right)
     renderHiveManagement(snap.hives || (snap.hive ? [snap.hive] : []));
+    updateDebugConsole(snap.hives || []);
 
     // Agent list
     renderAgentList(snap);
@@ -171,6 +218,7 @@
   // Перевод состояний агентов на русский
   const STATE_RU = {
     idle:            'ожидание',
+    moving:          'в пути',
     to_flower:       'к цветку',
     collecting:      'сбор',
     to_hive:         'к улью',
@@ -195,12 +243,16 @@
       const rmBtn = hives.length > 1
         ? `<button class="btn-rm-hive" data-hive="${hive.id}" title="Удалить улей">✕</button>`
         : '';
+      const error = hive.algo_error
+        ? `<div class="hive-error">${escapeHtml(hive.algo_error)}</div>`
+        : '';
       return `
         <div class="hive-item">
           <span class="hive-dot" style="background:${hive.color || '#f5c518'}"></span>
           <select class="hive-algo-select" data-hive="${hive.id}">${opts}</select>
           <span class="hive-honey" title="Мёд">${(hive.honey || 0).toFixed(1)}</span>
           ${rmBtn}
+          ${error}
         </div>`;
     });
     hiveList.innerHTML = buf.join('');
@@ -208,6 +260,11 @@
     hiveList.querySelectorAll('.hive-algo-select').forEach(sel => {
       sel.addEventListener('change', () => {
         SwarmWS.send({ action: 'set_hive_algorithm', hive_id: sel.dataset.hive, algorithm_name: sel.value });
+        const meta = getAlgorithmMeta(sel.value);
+        if (meta && meta.user_defined) {
+          SwarmWS.send({ action: 'get_user_algorithm_source', name: sel.value });
+          selectedHiveId = sel.dataset.hive;
+        }
       });
     });
     hiveList.querySelectorAll('.btn-rm-hive').forEach(btn => {
@@ -236,6 +293,7 @@
     selectedHiveId = hiveId;
     CanvasRenderer.setSelection({ beeId, hiveId });
     if (lastSnapshot) renderAgentList(lastSnapshot);
+    if (lastSnapshot) updateDebugConsole(lastSnapshot.hives || []);
     // Прокрутить список к выбранному элементу
     const sel = agentList.querySelector('.selected');
     if (sel) sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -398,5 +456,113 @@
     }
     return p;
   }
+
+  function getAlgorithmMeta(name) {
+    return cachedAlgorithms.find(a => a.name === name) || null;
+  }
+
+  function switchPanelTab(tabName) {
+    activePanelTab = tabName;
+    if (tabControls) tabControls.hidden = tabName !== 'controls';
+    if (tabCode) tabCode.hidden = tabName !== 'code';
+    tabButtons.forEach(btn => {
+      btn.classList.toggle('is-active', btn.dataset.tab === tabName);
+    });
+  }
+
+  function updateDebugConsole(hives) {
+    if (!algoDebugConsole || !algoDebugMeta) return;
+
+    let candidates = [];
+    if (selectedHiveId) {
+      candidates = hives.filter(hive => hive.id === selectedHiveId);
+    }
+    if (!candidates.length && algoNameInput && algoNameInput.value.trim()) {
+      candidates = hives.filter(hive => hive.algorithm_name === algoNameInput.value.trim());
+    }
+    if (!candidates.length) {
+      candidates = hives.filter(hive => (hive.algo_debug && hive.algo_debug.length) || hive.algo_error);
+    }
+
+    if (!candidates.length) {
+      algoDebugMeta.textContent = 'Вызовите debug(...) в пользовательском алгоритме, чтобы увидеть вывод по тикам.';
+      algoDebugConsole.textContent = '';
+      return;
+    }
+
+    algoDebugMeta.textContent = candidates.length === 1
+      ? `Отладка для ${candidates[0].id} (${candidates[0].algorithm_name})`
+      : 'Отладка по активным пользовательским алгоритмам';
+
+    const blocks = candidates.map((hive, index) => {
+      const header = `[${hive.id}] ${hive.algorithm_name}`;
+      const lines = [];
+      if (hive.algo_error) lines.push(`ERROR: ${hive.algo_error}`);
+      if (Array.isArray(hive.algo_debug) && hive.algo_debug.length) {
+        lines.push(...hive.algo_debug);
+      } else if (!hive.algo_error) {
+        lines.push('(нет debug-сообщений на этом тике)');
+      }
+      return `${header}\n${lines.join('\n')}`;
+    });
+
+    algoDebugConsole.textContent = blocks.join('\n\n');
+  }
+
+  function showAlgoError(message) {
+    if (!algoError) return;
+    algoError.hidden = false;
+    algoError.textContent = message;
+  }
+
+  function hideAlgoError() {
+    if (!algoError) return;
+    algoError.hidden = true;
+    algoError.textContent = '';
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      switchPanelTab(btn.dataset.tab || 'controls');
+      if ((btn.dataset.tab || 'controls') === 'code' && !algoSourceInput.value) {
+        algoSourceInput.value = DEFAULT_ALGO_SOURCE;
+      }
+    });
+  });
+
+  if (btnSaveAlgo) {
+    btnSaveAlgo.addEventListener('click', () => {
+      hideAlgoError();
+      switchPanelTab('code');
+      SwarmWS.send({
+        action: 'save_user_algorithm',
+        name: algoNameInput.value.trim(),
+        description: algoDescriptionInput.value.trim(),
+        source: algoSourceInput.value,
+      });
+    });
+  }
+
+  if (btnDeleteAlgo) {
+    btnDeleteAlgo.addEventListener('click', () => {
+      hideAlgoError();
+      switchPanelTab('code');
+      SwarmWS.send({
+        action: 'delete_user_algorithm',
+        name: algoNameInput.value.trim(),
+      });
+    });
+  }
+
+  switchPanelTab(activePanelTab);
 
 })();

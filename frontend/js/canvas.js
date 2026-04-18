@@ -35,6 +35,7 @@ const CanvasRenderer = (() => {
     probabilistic:'вероятн.',
     selective:    'избират.',
     safety:       'безопасн.',
+    smart_forager:'командн.',
   };
 
   const SIZES = {

@@ -28,6 +28,7 @@ class BaseSwarmAlgorithm(ABC):
 
     name: str = ""
     description: str = ""
+    is_command_based: bool = False
 
     def tick(
         self,

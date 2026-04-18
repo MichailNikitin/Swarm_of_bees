@@ -36,8 +36,12 @@
 
   <!-- ── Правая панель: управление ────────────────────────────── -->
   <aside class="panel" id="panel-right">
-    <div class="panel-header">Управление</div>
-    <div class="panel-body">
+    <div class="panel-header">Панель</div>
+    <div class="panel-tabs">
+      <button class="panel-tab is-active" id="tab-btn-controls" data-tab="controls">Управление</button>
+      <button class="panel-tab" id="tab-btn-code" data-tab="code">Код / Отладка</button>
+    </div>
+    <div class="panel-body panel-tab-view" id="tab-controls">
 
       <!-- Кнопки управления -->
       <div class="ctrl-section">
@@ -166,6 +170,37 @@
         </div>
       </div>
 
+    </div>
+    <div class="panel-body panel-tab-view" id="tab-code" hidden>
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Редактор алгоритма</div>
+        <div id="code-editor-panel">
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Имя</span>
+            </div>
+            <input class="editor-input" id="algo-name" type="text" placeholder="smart_custom" />
+          </div>
+          <div class="slider-group">
+            <div class="slider-label">
+              <span>Описание</span>
+            </div>
+            <input class="editor-input" id="algo-description" type="text" placeholder="Пользовательский алгоритм" />
+          </div>
+          <textarea id="algo-source" class="editor-textarea" spellcheck="false"></textarea>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn btn-start" id="btn-save-algo">Сохранить</button>
+            <button class="btn btn-stop" id="btn-delete-algo">Удалить</button>
+          </div>
+          <div id="algo-error" class="algo-error" hidden></div>
+        </div>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-section-title">Консоль дебага</div>
+        <div id="algo-debug-meta" class="debug-meta">Логи пользовательских алгоритмов появятся здесь.</div>
+        <pre id="algo-debug-console" class="debug-console"></pre>
+      </div>
     </div>
   </aside>
 </div>

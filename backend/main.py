@@ -10,6 +10,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from simulation.algorithms import (
+    get_user_algorithm_source,
+    register_user_algorithm,
+    remove_user_algorithm,
+)
 from simulation.engine import SimulationEngine
 
 logging.basicConfig(level=logging.INFO)
@@ -122,6 +127,58 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     json.dumps({
                         "event": "algorithms",
                         "algorithms": engine.get_algorithms(),
+                    })
+                )
+
+            elif action == "save_user_algorithm":
+                ok, error = register_user_algorithm(
+                    msg.get("name", ""),
+                    msg.get("description", ""),
+                    msg.get("source", ""),
+                )
+                if ok:
+                    for hive_id, hive in engine.state.hives.items():
+                        if hive.algorithm_name == msg.get("name", ""):
+                            engine.controller.invalidate(hive_id)
+                    await websocket.send_text(
+                        json.dumps({
+                            "event": "algorithm_saved",
+                            "algorithms": engine.get_algorithms(),
+                            "name": msg.get("name", ""),
+                        })
+                    )
+                else:
+                    await websocket.send_text(
+                        json.dumps({
+                            "event": "algorithm_save_error",
+                            "error": error,
+                            "algorithms": engine.get_algorithms(),
+                        })
+                    )
+
+            elif action == "delete_user_algorithm":
+                name = msg.get("name", "")
+                remove_user_algorithm(name)
+                for hive_id, hive in engine.state.hives.items():
+                    if hive.algorithm_name == name:
+                        hive.algorithm_name = "greedy"
+                        engine.controller.invalidate(hive_id)
+                await websocket.send_text(
+                    json.dumps({
+                        "event": "algorithm_deleted",
+                        "algorithms": engine.get_algorithms(),
+                        "name": name,
+                        **engine.get_snapshot(),
+                    })
+                )
+
+            elif action == "get_user_algorithm_source":
+                name = msg.get("name", "")
+                await websocket.send_text(
+                    json.dumps({
+                        "event": "user_algorithm_source",
+                        "name": name,
+                        "source": get_user_algorithm_source(name),
                     })
                 )
 

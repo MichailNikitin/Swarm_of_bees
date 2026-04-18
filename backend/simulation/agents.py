@@ -22,6 +22,7 @@ HIVE_COLORS = [
 
 class BeeState(str, Enum):
     IDLE = "idle"
+    MOVING = "moving"
     TO_FLOWER = "to_flower"
     COLLECTING = "collecting"
     TO_HIVE = "to_hive"

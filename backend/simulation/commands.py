@@ -1,23 +1,16 @@
-"""Command data types for the command-based algorithm system."""
+"""Command-based control types for read-only world access."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 
-@dataclass
+@dataclass(frozen=True)
 class BeeCommand:
-    """Low-level command issued to a bee by a command-based algorithm."""
-    action: str         # "move", "collect", "unload", "rest", "idle", "pickup"
-    angle: float = 0.0  # radians, for "move" (0=right, π/2=down)
-    speed_factor: float = 1.0   # 0.0-1.0 speed multiplier
-    target_id: str = ""         # for "pickup" — id of unconscious bee
-
-
-CommandDict = Dict[str, BeeCommand]
-
-
-# ── Read-only view objects (frozen — algorithms cannot mutate state) ──────
+    action: str
+    angle: float = 0.0
+    speed_factor: float = 1.0
+    target_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -25,14 +18,14 @@ class BeeView:
     id: str
     x: float
     y: float
+    hive_id: str
+    state: str
+    nectar: float
     energy: float
     max_energy: float
-    nectar: float
-    max_nectar: float
-    state: str
-    carry_target_id: Optional[str]
+    target_flower_id: str | None
+    carry_target_id: str | None
     carried_by: Tuple[str, ...]
-    hive_id: str
 
 
 @dataclass(frozen=True)
@@ -51,6 +44,7 @@ class ObstacleView:
     x: float
     y: float
     radius: float
+    kind: str
 
 
 @dataclass(frozen=True)
@@ -60,10 +54,13 @@ class WorldView:
     hive_y: float
     hive_nectar: float
     hive_honey: float
-    bees: Tuple[BeeView, ...]           # only this hive's bees
-    all_bees: Tuple[BeeView, ...]       # all bees (global knowledge)
+    bees: Tuple[BeeView, ...]
+    all_bees: Tuple[BeeView, ...]
     flowers: Tuple[FlowerView, ...]
     obstacles: Tuple[ObstacleView, ...]
     canvas_w: float
     canvas_h: float
     tick: int
+
+
+CommandDict = Dict[str, BeeCommand]

@@ -13,6 +13,7 @@ from .agents import (
     make_bee, make_flower, make_obstacle,
 )
 from .algorithms import list_algorithms
+from .commands import BeeCommand
 from .controller import SwarmController
 
 DEFAULT_CANVAS_W = 900
@@ -158,13 +159,19 @@ class SimulationEngine:
         p = self.params
         total_honey = sum(h.honey for h in s.hives.values())
         total_hive_nectar = sum(h.nectar for h in s.hives.values())
+        hives = []
+        for hive in s.hives.values():
+            item = hive.to_dict()
+            item["algo_error"] = self.controller.get_hive_error(hive.id)
+            item["algo_debug"] = self.controller.get_hive_debug(hive.id)
+            hives.append(item)
         return {
             "tick": s.tick_count,
             "running": self._running,
             "bees": [b.to_dict() for b in s.bees.values()],
             "flowers": [f.to_dict() for f in s.flowers.values()],
             "obstacles": [o.to_dict() for o in s.obstacles.values()],
-            "hives": [h.to_dict() for h in s.hives.values()],
+            "hives": hives,
             "stats": {
                 "total_nectar_collected": round(s.total_nectar_collected, 2),
                 "total_honey": round(total_honey, 3),
@@ -314,8 +321,10 @@ class SimulationEngine:
     def _tick(self) -> None:
         self.state.tick_count += 1
         self._update_flowers()
+        self.controller.refresh_command_hives(self.state)
         self._update_bees()
-        self.controller.tick(self.state)
+        self.controller.tick(self.state, self.params)
+        self._execute_commands()
 
     def _update_flowers(self) -> None:
         for flower in self.state.flowers.values():
@@ -494,6 +503,148 @@ class SimulationEngine:
                 and self.state.bees[cid].carry_target_id == bee.id
             ]
 
+    def _collect_from_flower(self, bee: Bee, flower: Flower) -> bool:
+        collect = min(bee.collect_rate, bee.max_nectar - bee.nectar, flower.nectar)
+        if collect <= 0.0:
+            return False
+        flower.nectar -= collect
+        bee.nectar += collect
+        self.state.total_nectar_collected += collect
+        return True
+
+    def _command_collect(self, bee: Bee) -> None:
+        nearby = [
+            flower for flower in self.state.flowers.values()
+            if flower.state == FlowerState.OPEN
+            and bee.pos.distance_to(flower.pos) <= ARRIVAL_THRESHOLD + FLOWER_SLOT_RADIUS
+        ]
+        if not nearby:
+            bee.state = BeeState.IDLE
+            return
+        flower = max(nearby, key=lambda item: item.nectar)
+        if not self._collect_from_flower(bee, flower):
+            bee.state = BeeState.IDLE
+            return
+        bee.state = BeeState.COLLECTING
+
+    def _command_unload(self, bee: Bee, hive: Hive | None) -> None:
+        if hive is None or bee.pos.distance_to(hive.pos) > HIVE_REST_RADIUS:
+            bee.state = BeeState.IDLE
+            return
+        unload = min(bee.unload_rate, bee.nectar)
+        bee.state = BeeState.UNLOADING
+        if unload > 0:
+            bee.nectar -= unload
+            hive.process_nectar(unload)
+            if not self._drain_energy(bee, self.params.energy_drain_unload):
+                return
+        if bee.nectar <= 0.0:
+            bee.nectar = 0.0
+
+    def _command_rest(self, bee: Bee, hive: Hive | None) -> None:
+        if hive is None or bee.pos.distance_to(hive.pos) > HIVE_REST_RADIUS:
+            bee.state = BeeState.IDLE
+            return
+        bee.state = BeeState.RESTING
+        bee.energy = min(bee.max_energy, bee.energy + self.params.energy_regen_rate)
+
+    def _command_pickup(self, bee: Bee, target_id: str) -> None:
+        target = self.state.bees.get(target_id)
+        if not target or target.state != BeeState.UNCONSCIOUS:
+            bee.state = BeeState.IDLE
+            bee.carry_target_id = None
+            return
+        if bee.pos.distance_to(target.pos) > ARRIVAL_THRESHOLD + RESCUE_SLOT_RADIUS:
+            bee.state = BeeState.IDLE
+            return
+        bee.state = BeeState.CARRYING
+        bee.carry_target_id = target.id
+        if bee.id not in target.carried_by:
+            target.carried_by.append(bee.id)
+        self._drain_energy(bee, self.params.energy_drain_carry)
+
+    def _sync_command_carrying(self) -> None:
+        carry_groups: Dict[str, list[Bee]] = {}
+        for bee in self.state.bees.values():
+            if bee.hive_id in self.controller.command_hive_ids and bee.state == BeeState.CARRYING and bee.carry_target_id:
+                carry_groups.setdefault(bee.carry_target_id, []).append(bee)
+
+        for target_id, carriers in carry_groups.items():
+            target = self.state.bees.get(target_id)
+            if not target or target.state != BeeState.UNCONSCIOUS:
+                for carrier in carriers:
+                    carrier.state = BeeState.IDLE
+                    carrier.carry_target_id = None
+                continue
+
+            alive_carriers = [carrier for carrier in carriers if carrier.state == BeeState.CARRYING]
+            if not alive_carriers:
+                continue
+
+            target.pos.x = sum(carrier.pos.x for carrier in alive_carriers) / len(alive_carriers)
+            target.pos.y = sum(carrier.pos.y for carrier in alive_carriers) / len(alive_carriers)
+
+            target_hive = self.state.hives.get(target.hive_id)
+            if target_hive and target.pos.distance_to(target_hive.pos) < HIVE_REST_RADIUS:
+                target.state = BeeState.RESTING
+                target.carried_by.clear()
+                for carrier in alive_carriers:
+                    carrier.carry_target_id = None
+                    carrier.state = BeeState.RESTING if carrier.energy <= self.params.energy_low_threshold else BeeState.IDLE
+
+    def _execute_commands(self) -> None:
+        if not self.controller.pending_commands:
+            return
+
+        speed = self.params.bee_speed
+        for hive_id in self.controller.command_hive_ids:
+            hive = self.state.hives.get(hive_id)
+            commands = self.controller.pending_commands.get(hive_id, {})
+            hive_bees = [bee for bee in self.state.bees.values() if bee.hive_id == hive_id]
+
+            for bee in hive_bees:
+                if bee.state == BeeState.UNCONSCIOUS:
+                    continue
+
+                command = commands.get(bee.id, BeeCommand(action="idle"))
+                action = (command.action or "idle").lower()
+
+                if action == "move":
+                    look_ahead = Vec2(
+                        bee.pos.x + math.cos(command.angle) * speed * 10.0,
+                        bee.pos.y + math.sin(command.angle) * speed * 10.0,
+                    )
+                    move_speed = max(0.0, min(1.0, command.speed_factor)) * speed
+                    self._steer_move(bee, look_ahead, move_speed)
+                    if not self._drain_energy(bee, self.params.energy_drain_move):
+                        continue
+                    bee.state = BeeState.CARRYING if bee.carry_target_id else BeeState.MOVING
+
+                elif action == "collect":
+                    self._command_collect(bee)
+                    if bee.state == BeeState.COLLECTING and not self._drain_energy(bee, self.params.energy_drain_collect):
+                        continue
+
+                elif action == "unload":
+                    self._command_unload(bee, hive)
+
+                elif action == "rest":
+                    self._command_rest(bee, hive)
+
+                elif action == "pickup":
+                    self._command_pickup(bee, command.target_id)
+
+                else:
+                    if self.controller.get_hive_error(hive_id) and bee.carry_target_id:
+                        target = self.state.bees.get(bee.carry_target_id)
+                        if target and bee.id in target.carried_by:
+                            target.carried_by.remove(bee.id)
+                        bee.carry_target_id = None
+                    if bee.state != BeeState.CARRYING or self.controller.get_hive_error(hive_id):
+                        bee.state = BeeState.IDLE
+
+        self._sync_command_carrying()
+
     def _update_bees(self) -> None:
         p = self.params
         speed = p.bee_speed
@@ -502,6 +653,8 @@ class SimulationEngine:
 
         # ── Pass 1: individual bee state machine ──────────────────────
         for bee in self.state.bees.values():
+            if bee.hive_id in self.controller.command_hive_ids:
+                continue
             hive = self.state.hives.get(bee.hive_id)
 
             if bee.state == BeeState.IDLE:
